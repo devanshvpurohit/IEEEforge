@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from "docx";
+import { IEEEPaper, IEEESection } from "@/lib/paper-types";
 
 export async function POST(req: NextRequest) {
   try {
-    const { paper } = await req.json();
+    const { paper }: { paper: IEEEPaper } = await req.json();
 
     if (!paper) {
       return NextResponse.json({ error: "No paper data provided" }, { status: 400 });
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
             }),
 
             // Sections
-            ...paper.sections.flatMap((section: any) => [
+            ...paper.sections.flatMap((section: IEEESection) => [
               new Paragraph({
                 text: section.title,
                 heading: HeadingLevel.HEADING_1,
@@ -78,14 +79,15 @@ export async function POST(req: NextRequest) {
 
     const buffer = await Packer.toBuffer(doc);
 
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "Content-Disposition": "attachment; filename=ieee_paper.docx",
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Export error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

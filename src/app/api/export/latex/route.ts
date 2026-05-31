@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { IEEEPaper, IEEESection } from "@/lib/paper-types";
 
 export async function POST(req: NextRequest) {
   try {
-    const { paper } = await req.json();
+    const { paper }: { paper: IEEEPaper } = await req.json();
 
     if (!paper) {
       return NextResponse.json({ error: "No paper data provided" }, { status: 400 });
     }
 
-    const sectionsLatex = paper.sections.map((s: any) => 
+    const sectionsLatex = paper.sections.map((s: IEEESection) => 
       `\\section{${s.title.replace(/^[IVXLC]+\.\s*/, '')}}\n${s.content}`
     ).join("\n\n");
 
@@ -55,8 +56,9 @@ ${referencesLatex}
     `;
 
     return NextResponse.json({ latex: latexTemplate.trim() });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("LaTeX export error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
