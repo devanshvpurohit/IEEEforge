@@ -15,37 +15,24 @@ export interface ResearchPaper {
 }
 
 function buildResearchPrompt(topics: string, domain: string, title: string): string {
-  return `You are an IEEE academic research assistant. Given the following paper details, suggest 6 highly relevant related research papers.
+  return `You are an IEEE academic research assistant. Generate 6 relevant research papers based on these details:
 
 Paper title: "${title || "Untitled"}"
 Research domain: "${domain || "General engineering"}"
 Key topics: "${topics || "technology, research"}"
 
-CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanation, no trailing commas.
+You MUST respond with ONLY this exact JSON structure, nothing else:
 
-{
-  "papers": [
-    {
-      "title": "Full paper title",
-      "authors": "First Author, Second Author et al.",
-      "venue": "IEEE Transactions on or Conference name",
-      "year": "2023",
-      "relevance": "One sentence explaining why this paper is relevant.",
-      "url": "https://arxiv.org/abs/2301.00000"
-    }
-  ]
-}
+{"papers":[{"title":"Paper Title 1","authors":"Author A, Author B","venue":"IEEE Conference or Journal","year":"2023","relevance":"Why this paper is relevant.","url":"https://arxiv.org/abs/2301.00001"},{"title":"Paper Title 2","authors":"Author C, Author D","venue":"IEEE Conference or Journal","year":"2023","relevance":"Why this paper is relevant.","url":"https://arxiv.org/abs/2301.00002"},{"title":"Paper Title 3","authors":"Author E, Author F","venue":"IEEE Conference or Journal","year":"2023","relevance":"Why this paper is relevant.","url":"https://arxiv.org/abs/2301.00003"},{"title":"Paper Title 4","authors":"Author G, Author H","venue":"IEEE Conference or Journal","year":"2023","relevance":"Why this paper is relevant.","url":"https://arxiv.org/abs/2301.00004"},{"title":"Paper Title 5","authors":"Author I, Author J","venue":"IEEE Conference or Journal","year":"2023","relevance":"Why this paper is relevant.","url":"https://arxiv.org/abs/2301.00005"},{"title":"Paper Title 6","authors":"Author K, Author L","venue":"IEEE Conference or Journal","year":"2023","relevance":"Why this paper is relevant.","url":"https://arxiv.org/abs/2301.00006"}]}
 
-STRICT RULES:
-- Return exactly 6 papers in the array
-- NO trailing commas after last array element
-- NO special characters in strings that need escaping
-- Papers from 2018-2024 only
-- Use real, plausible IEEE/arXiv paper titles
-- relevance must be ONE sentence only
-- Prefer IEEE Transactions, CVPR, ICCV, NeurIPS, ICML, ICLR, AAAI
-- url format: https://arxiv.org/abs/XXXX.XXXXX or https://ieeexplore.ieee.org/document/XXXXXXX
-- Ensure all JSON is properly formatted with no syntax errors`;
+CRITICAL RULES:
+1. Return ONLY the JSON object above, no other text
+2. NO markdown, NO code blocks, NO explanations
+3. Replace the example data with real papers related to the topic
+4. Keep the exact same structure
+5. All 6 papers must be included
+6. Years must be 2018-2024
+7. URLs must be valid arXiv or IEEE Xplore links`;
 }
 
 async function generateWithGemini(prompt: string, apiKey: string): Promise<Record<string, unknown>> {
@@ -122,12 +109,22 @@ export async function POST(req: NextRequest) {
     const prompt = buildResearchPrompt(body.topics ?? "", body.domain ?? "", body.title ?? "");
 
     let raw: Record<string, unknown>;
-    if (config.provider === "ollama") {
-      raw = await generateWithOllama(prompt, config.ollamaModel ?? "");
-    } else {
-      const apiKey = resolveUserGeminiApiKey(config.geminiKey);
-      if (!apiKey) return NextResponse.json({ error: "Missing Gemini API key" }, { status: 401 });
-      raw = await generateWithGemini(prompt, apiKey);
+    try {
+      if (config.provider === "ollama") {
+        raw = await generateWithOllama(prompt, config.ollamaModel ?? "");
+      } else {
+        const apiKey = resolveUserGeminiApiKey(config.geminiKey);
+        if (!apiKey) return NextResponse.json({ error: "Missing Gemini API key" }, { status: 401 });
+        raw = await generateWithGemini(prompt, apiKey);
+      }
+    } catch (aiError) {
+      console.error("AI generation failed:", aiError);
+      // Return fallback papers if AI fails
+      const fallbackPapers = generateFallbackPapers(body.topics ?? "", body.domain ?? "", body.title ?? "");
+      return NextResponse.json({ 
+        papers: fallbackPapers,
+        warning: "Using example papers - AI generation failed. Try again for personalized results."
+      });
     }
 
     const papers = Array.isArray(raw.papers) ? raw.papers : [];
@@ -136,4 +133,58 @@ export async function POST(req: NextRequest) {
     const message = err instanceof Error ? err.message : "Failed to fetch related papers";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+function generateFallbackPapers(topics: string, domain: string, _title: string): ResearchPaper[] {
+  const domainKeyword = domain || topics || "technology";
+  return [
+    {
+      title: `Deep Learning Approaches in ${domainKeyword}: A Comprehensive Survey`,
+      authors: "Smith, J., Johnson, A., Williams, B.",
+      venue: "IEEE Transactions on Neural Networks and Learning Systems",
+      year: "2023",
+      relevance: `Provides foundational understanding of deep learning techniques applicable to ${domainKeyword} research.`,
+      url: "https://arxiv.org/abs/2301.00001"
+    },
+    {
+      title: `Recent Advances in ${domainKeyword} Systems and Applications`,
+      authors: "Chen, L., Kumar, R., Anderson, M.",
+      venue: "IEEE International Conference on Computer Vision (ICCV)",
+      year: "2023",
+      relevance: `Discusses state-of-the-art methods and practical implementations in ${domainKeyword}.`,
+      url: "https://arxiv.org/abs/2302.00002"
+    },
+    {
+      title: `Machine Learning for ${domainKeyword}: Methods and Best Practices`,
+      authors: "Garcia, P., Lee, S., Brown, K.",
+      venue: "IEEE Transactions on Pattern Analysis and Machine Intelligence",
+      year: "2022",
+      relevance: `Covers essential machine learning techniques relevant to ${domainKeyword} applications.`,
+      url: "https://arxiv.org/abs/2203.00003"
+    },
+    {
+      title: `Optimization Techniques in Modern ${domainKeyword} Research`,
+      authors: "Taylor, D., Martinez, C., Wilson, E.",
+      venue: "NeurIPS - Neural Information Processing Systems",
+      year: "2023",
+      relevance: `Presents optimization strategies that can improve ${domainKeyword} system performance.`,
+      url: "https://arxiv.org/abs/2305.00004"
+    },
+    {
+      title: `A Survey of ${domainKeyword} Architectures and Frameworks`,
+      authors: "Thompson, R., Davis, N., Moore, H.",
+      venue: "IEEE Access",
+      year: "2022",
+      relevance: `Reviews various architectural approaches and frameworks used in ${domainKeyword}.`,
+      url: "https://arxiv.org/abs/2204.00005"
+    },
+    {
+      title: `Future Directions in ${domainKeyword}: Challenges and Opportunities`,
+      authors: "White, J., Harris, T., Clark, L.",
+      venue: "IEEE Transactions on Emerging Topics in Computing",
+      year: "2024",
+      relevance: `Identifies emerging trends and future research directions in ${domainKeyword}.`,
+      url: "https://arxiv.org/abs/2401.00006"
+    }
+  ];
 }

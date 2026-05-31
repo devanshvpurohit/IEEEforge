@@ -70,7 +70,7 @@ export default function ResearchPapers({ settings, topics, domain, title, visibl
           title,
         }),
       });
-      const data = await res.json() as { papers?: unknown[]; error?: string };
+      const data = await res.json() as { papers?: unknown[]; error?: string; warning?: string };
       if (!res.ok) throw new Error(data.error ?? "Could not fetch papers");
       
       // Validate and filter papers
@@ -81,6 +81,11 @@ export default function ResearchPapers({ settings, topics, domain, title, visibl
       
       setPapers(validPapers);
       setFetched(true);
+      
+      // Show warning if using fallback papers
+      if (data.warning) {
+        setError(data.warning);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load related papers";
       setError(message);
@@ -207,7 +212,7 @@ export default function ResearchPapers({ settings, topics, domain, title, visibl
           </div>
         )}
 
-        {error && (
+        {error && papers.length === 0 && (
           <div className="flex items-start gap-3 p-4 bg-red-950/40 border border-red-500/20 rounded-2xl text-sm text-red-300">
             <AlertCircle size={16} className="shrink-0 mt-0.5" />
             <div>
@@ -219,6 +224,16 @@ export default function ResearchPapers({ settings, topics, domain, title, visibl
               >
                 Try again
               </button>
+            </div>
+          </div>
+        )}
+
+        {error && papers.length > 0 && (
+          <div className="flex items-start gap-3 p-4 bg-amber-950/40 border border-amber-500/20 rounded-2xl text-sm text-amber-300 mb-4">
+            <AlertCircle size={16} className="shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium">Using Example Papers</p>
+              <p className="text-xs text-amber-400 mt-1">{error}</p>
             </div>
           </div>
         )}
