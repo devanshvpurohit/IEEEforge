@@ -56,18 +56,39 @@ function parseJsonFromText(text: string): Record<string, unknown> {
   
   let jsonStr = jsonMatch[0];
   
-  // Fix common JSON issues
-  // Remove trailing commas before closing brackets
+  // Fix common JSON issues more aggressively
+  // Remove trailing commas before closing brackets/braces
   jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
-  // Fix escaped quotes issues
-  jsonStr = jsonStr.replace(/\\"/g, '"');
+  // Fix multiple trailing commas
+  jsonStr = jsonStr.replace(/,+(\s*[}\]])/g, '$1');
+  // Remove comments (// or /* */)
+  jsonStr = jsonStr.replace(/\/\/.*$/gm, '');
+  jsonStr = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '');
+  // Fix unescaped quotes in strings (basic attempt)
+  jsonStr = jsonStr.replace(/([^\\])"([^"]*)"([^:])/g, '$1\\"$2\\"$3');
+  // Fix single quotes to double quotes
+  jsonStr = jsonStr.replace(/'/g, '"');
+  // Remove any non-printable characters
+  jsonStr = jsonStr.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
   
   try {
     return JSON.parse(jsonStr) as Record<string, unknown>;
   } catch (parseErr) {
     console.error("Ollama JSON parse error:", parseErr);
-    console.error("Attempted to parse:", jsonStr.substring(0, 500));
-    throw new Error("Ollama returned malformed JSON. Try another model or a shorter document.");
+    console.error("Attempted to parse:", jsonStr.substring(0, 1000));
+    
+    // Last resort: try to extract just the papers array
+    try {
+      const papersMatch = jsonStr.match(/"papers"\s*:\s*\[([\s\S]*)\]/);
+      if (papersMatch) {
+        const papersJson = `{"papers":[${papersMatch[1]}]}`;
+        return JSON.parse(papersJson) as Record<string, unknown>;
+      }
+    } catch {
+      // If that also fails, throw the original error
+    }
+    
+    throw new Error("Ollama returned malformed JSON. Try Gemini for better results, or use the fallback papers.");
   }
 }
 

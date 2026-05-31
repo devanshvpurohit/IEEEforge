@@ -125,7 +125,7 @@ export default function ResearchPapers({ settings, topics, domain, title, visibl
         `    Relevance: ${paper.relevance}\n`
       ).join('\n');
     
-    // Download both formats
+    // Download BibTeX
     const blob1 = new Blob([bibtex], { type: 'text/plain' });
     const url1 = URL.createObjectURL(blob1);
     const a1 = document.createElement('a');
@@ -134,6 +134,7 @@ export default function ResearchPapers({ settings, topics, domain, title, visibl
     a1.click();
     URL.revokeObjectURL(url1);
     
+    // Download TXT
     setTimeout(() => {
       const blob2 = new Blob([plainText], { type: 'text/plain' });
       const url2 = URL.createObjectURL(blob2);
@@ -143,6 +144,33 @@ export default function ResearchPapers({ settings, topics, domain, title, visibl
       a2.click();
       URL.revokeObjectURL(url2);
     }, 100);
+  };
+
+  const handleDownloadDocx = async () => {
+    if (papers.length === 0) return;
+    
+    try {
+      const res = await fetch("/api/research/export-docx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ papers }),
+      });
+      
+      if (!res.ok) throw new Error("Failed to generate DOCX");
+      
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "research-papers.docx");
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("DOCX export error:", err);
+      alert("Failed to export as DOCX. Please try again.");
+    }
   };
 
   useEffect(() => {
@@ -170,16 +198,28 @@ export default function ResearchPapers({ settings, topics, domain, title, visibl
           </div>
           <div className="flex items-center gap-2">
             {papers.length > 0 && !loading && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1 shrink-0"
-                onClick={handleDownload}
-                title="Download as BibTeX and TXT"
-              >
-                <Download size={13} />
-                Download
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1 shrink-0"
+                  onClick={handleDownloadDocx}
+                  title="Download as DOCX"
+                >
+                  <Download size={13} />
+                  DOCX
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1 shrink-0"
+                  onClick={handleDownload}
+                  title="Download as BibTeX and TXT"
+                >
+                  <Download size={13} />
+                  BibTeX
+                </Button>
+              </>
             )}
             {fetched && !loading && (
               <Button
@@ -273,7 +313,7 @@ export default function ResearchPapers({ settings, topics, domain, title, visibl
               </a>
             ))}
             <p className="text-xs text-white/30 text-center pt-2">
-              AI-suggested references · verify before citing · Download as BibTeX for citations
+              AI-suggested references · verify before citing · Download as DOCX, BibTeX, or TXT
             </p>
           </div>
         )}
