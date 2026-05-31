@@ -21,27 +21,31 @@ Paper title: "${title || "Untitled"}"
 Research domain: "${domain || "General engineering"}"
 Key topics: "${topics || "technology, research"}"
 
-Return ONLY valid JSON (no markdown, no explanation):
+CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanation, no trailing commas.
+
 {
   "papers": [
     {
       "title": "Full paper title",
       "authors": "First Author, Second Author et al.",
-      "venue": "IEEE Transactions on / Conference name",
+      "venue": "IEEE Transactions on or Conference name",
       "year": "2023",
-      "relevance": "One sentence explaining why this paper is relevant to the user's work.",
-      "url": "https://arxiv.org/abs/... or https://ieeexplore.ieee.org/..."
+      "relevance": "One sentence explaining why this paper is relevant.",
+      "url": "https://arxiv.org/abs/2301.00000"
     }
   ]
 }
 
-Rules:
-- Return exactly 6 papers
-- Papers should be from 2018-2024
-- Use real, plausible IEEE/arXiv paper titles and venues
-- relevance must specifically connect the cited paper to the user's topic
-- Prefer papers from top IEEE venues: IEEE Transactions, CVPR, ICCV, NeurIPS, ICML, ICLR, AAAI, INFOCOM, etc.
-- url should be a plausible arXiv or IEEE Xplore link`;
+STRICT RULES:
+- Return exactly 6 papers in the array
+- NO trailing commas after last array element
+- NO special characters in strings that need escaping
+- Papers from 2018-2024 only
+- Use real, plausible IEEE/arXiv paper titles
+- relevance must be ONE sentence only
+- Prefer IEEE Transactions, CVPR, ICCV, NeurIPS, ICML, ICLR, AAAI
+- url format: https://arxiv.org/abs/XXXX.XXXXX or https://ieeexplore.ieee.org/document/XXXXXXX
+- Ensure all JSON is properly formatted with no syntax errors`;
 }
 
 async function generateWithGemini(prompt: string, apiKey: string): Promise<Record<string, unknown>> {
@@ -50,16 +54,41 @@ async function generateWithGemini(prompt: string, apiKey: string): Promise<Recor
     try {
       const model = genAI.getGenerativeModel({
         model: modelName,
-        generationConfig: { maxOutputTokens: 2048, temperature: 0.4 },
+        generationConfig: { 
+          maxOutputTokens: 2048, 
+          temperature: 0.3,
+          responseMimeType: "application/json"
+        },
       });
       const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      const match = text.match(/\{[\s\S]*\}/);
+      const text = result.response.text().trim();
+      
+      // Remove markdown code blocks if present
+      const cleanText = text.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+      
+      // Extract JSON object
+      const match = cleanText.match(/\{[\s\S]*\}/);
       if (!match) throw new Error("No JSON in response");
-      return JSON.parse(match[0]) as Record<string, unknown>;
+      
+      let jsonStr = match[0];
+      
+      // Fix common JSON issues
+      // Remove trailing commas before closing brackets
+      jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+      // Fix escaped quotes issues
+      jsonStr = jsonStr.replace(/\\"/g, '"');
+      
+      try {
+        return JSON.parse(jsonStr) as Record<string, unknown>;
+      } catch (parseErr) {
+        console.error("JSON parse error:", parseErr);
+        console.error("Attempted to parse:", jsonStr.substring(0, 500));
+        throw new Error("AI returned invalid JSON format");
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("not found") || msg.includes("404") || msg.includes("not supported")) continue;
+      if (msg.includes("JSON")) throw err;
       throw err;
     }
   }

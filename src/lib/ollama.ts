@@ -46,13 +46,27 @@ async function fetchOllamaTags(baseUrl: string): Promise<string[] | null> {
 }
 
 function parseJsonFromText(text: string): Record<string, unknown> {
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  // Remove markdown code blocks if present
+  const cleanText = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  
+  const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     throw new Error("Ollama returned an invalid response. Try a model that supports instructions.");
   }
+  
+  let jsonStr = jsonMatch[0];
+  
+  // Fix common JSON issues
+  // Remove trailing commas before closing brackets
+  jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+  // Fix escaped quotes issues
+  jsonStr = jsonStr.replace(/\\"/g, '"');
+  
   try {
-    return JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-  } catch {
+    return JSON.parse(jsonStr) as Record<string, unknown>;
+  } catch (parseErr) {
+    console.error("Ollama JSON parse error:", parseErr);
+    console.error("Attempted to parse:", jsonStr.substring(0, 500));
     throw new Error("Ollama returned malformed JSON. Try another model or a shorter document.");
   }
 }

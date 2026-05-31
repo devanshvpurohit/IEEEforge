@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { BookOpen, ExternalLink, Loader2, RefreshCw, AlertCircle } from "lucide-react";
+import { BookOpen, ExternalLink, Loader2, RefreshCw, AlertCircle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AiSettings } from "@/lib/settings-storage";
@@ -34,6 +34,19 @@ function PaperSkeleton() {
   );
 }
 
+function validatePaper(paper: unknown): paper is ResearchPaper {
+  if (!paper || typeof paper !== "object") return false;
+  const p = paper as Record<string, unknown>;
+  return (
+    typeof p.title === "string" &&
+    typeof p.authors === "string" &&
+    typeof p.venue === "string" &&
+    typeof p.year === "string" &&
+    typeof p.relevance === "string" &&
+    typeof p.url === "string"
+  );
+}
+
 export default function ResearchPapers({ settings, topics, domain, title, visible = true }: ResearchPapersProps) {
   const [papers, setPapers] = useState<ResearchPaper[]>([]);
   const [loading, setLoading] = useState(false);
@@ -57,16 +70,75 @@ export default function ResearchPapers({ settings, topics, domain, title, visibl
           title,
         }),
       });
-      const data = await res.json() as { papers?: ResearchPaper[]; error?: string };
+      const data = await res.json() as { papers?: unknown[]; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Could not fetch papers");
-      setPapers(data.papers ?? []);
+      
+      // Validate and filter papers
+      const validPapers = (data.papers ?? []).filter(validatePaper);
+      if (validPapers.length === 0 && data.papers && data.papers.length > 0) {
+        throw new Error("Received invalid paper data format");
+      }
+      
+      setPapers(validPapers);
       setFetched(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load related papers");
+      const message = err instanceof Error ? err.message : "Failed to load related papers";
+      setError(message);
+      console.error("Research papers error:", err);
     } finally {
       setLoading(false);
     }
   }, [settings, topics, domain, title]);
+
+  const handleDownload = () => {
+    if (papers.length === 0) return;
+    
+    // Format as BibTeX
+    const bibtex = papers.map((paper, i) => {
+      const key = `paper${i + 1}`;
+      const year = paper.year || "2024";
+      const cleanTitle = paper.title.replace(/[{}]/g, '');
+      const cleanAuthors = paper.authors.replace(/ et al\./g, '');
+      
+      return `@article{${key},
+  title={${cleanTitle}},
+  author={${cleanAuthors}},
+  journal={${paper.venue}},
+  year={${year}},
+  url={${paper.url}}
+}`;
+    }).join('\n\n');
+    
+    // Also create a plain text version
+    const plainText = `Related Research Papers\n${'='.repeat(50)}\n\n` +
+      papers.map((paper, i) => 
+        `[${i + 1}] ${paper.title}\n` +
+        `    Authors: ${paper.authors}\n` +
+        `    Venue: ${paper.venue}\n` +
+        `    Year: ${paper.year}\n` +
+        `    URL: ${paper.url}\n` +
+        `    Relevance: ${paper.relevance}\n`
+      ).join('\n');
+    
+    // Download both formats
+    const blob1 = new Blob([bibtex], { type: 'text/plain' });
+    const url1 = URL.createObjectURL(blob1);
+    const a1 = document.createElement('a');
+    a1.href = url1;
+    a1.download = 'references.bib';
+    a1.click();
+    URL.revokeObjectURL(url1);
+    
+    setTimeout(() => {
+      const blob2 = new Blob([plainText], { type: 'text/plain' });
+      const url2 = URL.createObjectURL(blob2);
+      const a2 = document.createElement('a');
+      a2.href = url2;
+      a2.download = 'research-papers.txt';
+      a2.click();
+      URL.revokeObjectURL(url2);
+    }, 100);
+  };
 
   useEffect(() => {
     if (!visible || (!topics && !domain && !title)) return;
@@ -91,17 +163,31 @@ export default function ResearchPapers({ settings, topics, domain, title, visibl
               AI-curated papers relevant to your research topic
             </CardDescription>
           </div>
-          {fetched && !loading && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1 shrink-0"
-              onClick={() => { setFetched(false); void fetchPapers(); }}
-            >
-              <RefreshCw size={13} />
-              Refresh
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {papers.length > 0 && !loading && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 shrink-0"
+                onClick={handleDownload}
+                title="Download as BibTeX and TXT"
+              >
+                <Download size={13} />
+                Download
+              </Button>
+            )}
+            {fetched && !loading && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 shrink-0"
+                onClick={() => { setFetched(false); void fetchPapers(); }}
+              >
+                <RefreshCw size={13} />
+                Refresh
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -172,7 +258,7 @@ export default function ResearchPapers({ settings, topics, domain, title, visibl
               </a>
             ))}
             <p className="text-xs text-white/30 text-center pt-2">
-              AI-suggested references · verify before citing
+              AI-suggested references · verify before citing · Download as BibTeX for citations
             </p>
           </div>
         )}
